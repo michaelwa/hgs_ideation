@@ -21,7 +21,7 @@ defmodule HgsIdeation.MixProject do
   def application do
     [
       mod: {HgsIdeation.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :hgs_surrealdb_sdk]
     ]
   end
 
@@ -66,7 +66,8 @@ defmodule HgsIdeation.MixProject do
       {:gettext, "~> 0.26"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      {:hgs_surrealdb_sdk, path: "../hgs_surrealdb_sdk/"}
     ]
   end
 

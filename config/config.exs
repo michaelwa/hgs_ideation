@@ -31,6 +31,15 @@ config :hgs_ideation, HgsIdeationWeb.Endpoint,
 # at the `config/runtime.exs`.
 config :hgs_ideation, HgsIdeation.Mailer, adapter: Swoosh.Adapters.Local
 
+# SurrealDB connection config is owned by this consuming application.
+# The hgs_surrealdb_sdk project has its own config only when run in isolation.
+config :hgs_surrealdb_sdk, :connection,
+  endpoint: System.get_env("SURREALDB_ENDPOINT", "http://localhost:8000"),
+  namespace: System.get_env("SURREALDB_NAMESPACE", "hgs"),
+  database: System.get_env("SURREALDB_DATABASE", "ideation"),
+  username: System.get_env("SURREALDB_USERNAME", "root"),
+  password: System.get_env("SURREALDB_PASSWORD", "root")
+
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.25.4",
