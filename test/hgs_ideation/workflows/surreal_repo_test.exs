@@ -17,11 +17,11 @@ defmodule HgsIdeation.Workflows.SurrealRepoTest do
 
   describe "graph_query/0" do
     test "loads status nodes and transition edges scoped to one workflow" do
-      query = SurrealRepo.graph_query()
+      query = SurrealRepo.graph_query("workflow:support")
 
       assert query =~ "FROM workflow_status"
       assert query =~ "FROM can_transition_to"
-      assert query =~ "WHERE workflow = $workflow"
+      assert query =~ "WHERE workflow = workflow:support"
       assert query =~ "ORDER BY lane_order ASC, label ASC"
     end
   end
@@ -33,8 +33,8 @@ defmodule HgsIdeation.Workflows.SurrealRepoTest do
                  "support",
                  connect_fun: fn -> {:ok, :client} end,
                  query_fun: fn :client, query, variables ->
-                   assert query == SurrealRepo.graph_query()
-                   assert variables == %{workflow: "workflow:support"}
+                   assert query == SurrealRepo.graph_query("workflow:support")
+                   assert variables == %{}
 
                    {:ok,
                     %QueryResult{

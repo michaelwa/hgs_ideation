@@ -37,7 +37,7 @@ defmodule HgsIdeation.Workflows.SurrealRepo do
 
     with {:ok, workflow_record_id} <- workflow_record_id(workflow_id),
          {:ok, %QueryResult{results: [status_rows, transition_rows | _]}} <-
-           query_fun.(client, graph_query(), %{workflow: workflow_record_id}) do
+           query_fun.(client, graph_query(workflow_record_id), %{}) do
       statuses = Enum.map(status_rows, &to_status/1)
       transitions = Enum.map(transition_rows, &to_transition/1)
 
@@ -53,6 +53,14 @@ defmodule HgsIdeation.Workflows.SurrealRepo do
   """
   @spec graph_query() :: String.t()
   def graph_query do
+    graph_query("$workflow")
+  end
+
+  @doc """
+  Returns the SurrealQL used to hydrate a graph for a validated workflow record id.
+  """
+  @spec graph_query(String.t()) :: String.t()
+  def graph_query(workflow_record_id) when is_binary(workflow_record_id) do
     """
     SELECT
       id,
@@ -60,9 +68,10 @@ defmodule HgsIdeation.Workflows.SurrealRepo do
       description,
       required_fields,
       initial,
-      terminal
+      terminal,
+      lane_order
     FROM #{@status_table}
-    WHERE workflow = $workflow
+    WHERE workflow = #{workflow_record_id}
     ORDER BY lane_order ASC, label ASC;
 
     SELECT
@@ -72,7 +81,7 @@ defmodule HgsIdeation.Workflows.SurrealRepo do
       label,
       required_fields
     FROM #{@transition_edge}
-    WHERE workflow = $workflow
+    WHERE workflow = #{workflow_record_id}
     ORDER BY label ASC, id ASC;
     """
   end
