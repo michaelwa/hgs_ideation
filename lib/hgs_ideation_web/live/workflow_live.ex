@@ -1,7 +1,7 @@
 defmodule HgsIdeationWeb.WorkflowLive do
   use HgsIdeationWeb, :live_view
 
-  alias HgsIdeation.Workflows
+  alias HgsIdeation.{Tasks, Workflows}
 
   @impl true
   def mount(%{"id" => workflow_id}, _session, socket) do
@@ -12,8 +12,10 @@ defmodule HgsIdeationWeb.WorkflowLive do
       |> assign(:graph, nil)
       |> assign(:statuses, [])
       |> assign(:transitions, [])
+      |> assign(:tasks_by_status, %{})
       |> assign(:mermaid, nil)
       |> assign(:load_error, nil)
+      |> assign(:task_error, nil)
       |> load_workflow(workflow_id)
 
     {:ok, socket}
@@ -36,7 +38,9 @@ defmodule HgsIdeationWeb.WorkflowLive do
               </p>
             </div>
             <span class="rounded border border-base-300 px-3 py-1 text-xs font-medium text-base-content/70">
-              {length(@statuses)} statuses / {length(@transitions)} transitions
+              {length(@statuses)} statuses / {length(@transitions)} transitions / {task_count(
+                @tasks_by_status
+              )} tasks
             </span>
           </div>
         </div>
@@ -53,7 +57,15 @@ defmodule HgsIdeationWeb.WorkflowLive do
           <section id="workflow-statuses" class="space-y-3">
             <div class="flex items-center gap-2">
               <.icon name="hero-rectangle-stack" class="size-5 text-base-content/60" />
-              <h2 class="text-lg font-semibold">Statuses</h2>
+              <h2 class="text-lg font-semibold">Board</h2>
+            </div>
+
+            <div
+              :if={@task_error}
+              id="workflow-task-error"
+              class="rounded border border-warning/40 bg-warning/10 p-4 text-sm text-warning"
+            >
+              Could not load task tickets: {inspect(@task_error)}
             </div>
 
             <div class="grid gap-3 sm:grid-cols-2">
@@ -80,6 +92,43 @@ defmodule HgsIdeationWeb.WorkflowLive do
                     >
                       terminal
                     </span>
+                  </div>
+                </div>
+
+                <div class="mt-5 space-y-2">
+                  <div class="flex items-center justify-between gap-3">
+                    <p class="text-xs font-semibold uppercase text-base-content/50">Tasks</p>
+                    <span class="rounded bg-base-200 px-2 py-1 text-xs text-base-content/60">
+                      {length(tasks_for_status(@tasks_by_status, status.id))}
+                    </span>
+                  </div>
+
+                  <div
+                    id={"workflow-status-#{dom_id(status.id)}-tasks"}
+                    class="space-y-2"
+                  >
+                    <div
+                      :if={tasks_for_status(@tasks_by_status, status.id) == []}
+                      class="rounded border border-dashed border-base-300 p-3 text-xs text-base-content/50"
+                    >
+                      No tasks
+                    </div>
+
+                    <article
+                      :for={task <- tasks_for_status(@tasks_by_status, status.id)}
+                      id={"workflow-task-#{dom_id(task.id)}"}
+                      class="rounded border border-base-300 bg-base-200 p-3"
+                    >
+                      <h4 class="text-sm font-semibold">{task.title}</h4>
+                      <p class="mt-1 text-xs font-mono text-base-content/50">{task.id}</p>
+
+                      <dl :if={task.data != %{}} class="mt-3 grid gap-2 text-xs">
+                        <div :for={{key, value} <- task_data_pairs(task)}>
+                          <dt class="font-mono text-base-content/50">{key}</dt>
+                          <dd class="mt-0.5 break-words">{task_data_value(value)}</dd>
+                        </div>
+                      </dl>
+                    </article>
                   </div>
                 </div>
 
@@ -160,10 +209,39 @@ defmodule HgsIdeationWeb.WorkflowLive do
         |> assign(:statuses, Workflows.list_statuses(graph))
         |> assign(:transitions, Workflows.list_transitions(graph))
         |> assign(:mermaid, Workflows.to_mermaid(graph))
+        |> load_tasks(workflow_id)
 
       {:error, error} ->
         assign(socket, :load_error, error)
     end
+  end
+
+  defp load_tasks(socket, workflow_id) do
+    case Tasks.list_tasks(workflow_id) do
+      {:ok, tasks} ->
+        assign(socket, :tasks_by_status, Enum.group_by(tasks, & &1.status_id))
+
+      {:error, error} ->
+        assign(socket, :task_error, error)
+    end
+  end
+
+  defp tasks_for_status(tasks_by_status, status_id) do
+    Map.get(tasks_by_status, status_id, [])
+  end
+
+  defp task_data_pairs(task) do
+    Enum.sort_by(task.data, fn {key, _value} -> to_string(key) end)
+  end
+
+  defp task_data_value(value) when is_binary(value), do: value
+  defp task_data_value(value), do: inspect(value)
+
+  defp task_count(tasks_by_status) do
+    tasks_by_status
+    |> Map.values()
+    |> Enum.map(&length/1)
+    |> Enum.sum()
   end
 
   defp dom_id(value) do
