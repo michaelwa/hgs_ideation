@@ -14,6 +14,7 @@ defmodule HgsIdeationWeb.WorkflowLive do
       |> assign(:transitions, [])
       |> assign(:tasks_by_status, %{})
       |> assign(:move_form, to_form(%{}, as: :move))
+      |> assign(:create_form, to_form(%{}, as: :task))
       |> assign(:mermaid, nil)
       |> assign(:load_error, nil)
       |> assign(:task_error, nil)
@@ -108,6 +109,41 @@ defmodule HgsIdeationWeb.WorkflowLive do
                     id={"workflow-status-#{dom_id(status.id)}-tasks"}
                     class="space-y-2"
                   >
+                    <.form
+                      :if={status.initial?}
+                      for={@create_form}
+                      id={"workflow-task-create-#{dom_id(status.id)}"}
+                      phx-submit="create_task"
+                      class="space-y-2 rounded border border-base-300 bg-base-100 p-2"
+                    >
+                      <input type="hidden" name="task[status_id]" value={status.id} />
+
+                      <.input
+                        id={"workflow-task-create-#{dom_id(status.id)}-title"}
+                        name="task[title]"
+                        label="Title"
+                        value=""
+                        required
+                      />
+
+                      <.input
+                        :for={field <- status.required_fields}
+                        id={"workflow-task-create-#{dom_id(status.id)}-#{dom_id(field)}"}
+                        name={"task[data][#{field}]"}
+                        label={field}
+                        value=""
+                        required
+                      />
+
+                      <button
+                        id={"workflow-task-create-#{dom_id(status.id)}-submit"}
+                        type="submit"
+                        class="btn btn-sm btn-primary w-full gap-2"
+                      >
+                        <.icon name="hero-plus" class="size-4" /> Create task
+                      </button>
+                    </.form>
+
                     <div
                       :if={tasks_for_status(@tasks_by_status, status.id) == []}
                       class="rounded border border-dashed border-base-300 p-3 text-xs text-base-content/50"
@@ -233,6 +269,35 @@ defmodule HgsIdeationWeb.WorkflowLive do
       </section>
     </Layouts.app>
     """
+  end
+
+  @impl true
+  def handle_event(
+        "create_task",
+        %{"task" => %{"status_id" => status_id, "title" => title} = params},
+        socket
+      ) do
+    data =
+      params
+      |> Map.get("data", %{})
+      |> Map.reject(fn {_key, value} -> value in [nil, ""] end)
+
+    case Tasks.create_task(socket.assigns.workflow_id, %{
+           status_id: status_id,
+           title: title,
+           data: data
+         }) do
+      {:ok, _task} ->
+        socket =
+          socket
+          |> put_flash(:info, "Task created")
+          |> load_workflow(socket.assigns.workflow_id)
+
+        {:noreply, socket}
+
+      {:error, error} ->
+        {:noreply, put_flash(socket, :error, "Create rejected: #{inspect(error)}")}
+    end
   end
 
   @impl true

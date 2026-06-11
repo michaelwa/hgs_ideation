@@ -14,6 +14,20 @@ defmodule HgsIdeationWeb.WorkflowLiveTest do
       {:ok, Agent.get(__MODULE__.Store, & &1)}
     end
 
+    def create_task("support", attrs, []) do
+      task = %TaskTicket{
+        id: "task_ticket:created",
+        workflow_id: "workflow:support",
+        status_id: attrs.status_id,
+        title: attrs.title,
+        data: attrs.data
+      }
+
+      Agent.update(__MODULE__.Store, &(&1 ++ [task]))
+
+      {:ok, task}
+    end
+
     def get_task(task_id, []) do
       case Agent.get(__MODULE__.Store, &Enum.find(&1, fn task -> task.id == task_id end)) do
         nil -> {:error, :task_not_found}
@@ -78,6 +92,7 @@ defmodule HgsIdeationWeb.WorkflowLiveTest do
     assert has_element?(view, "#workflow-status-todo")
     assert has_element?(view, "#workflow-status-review")
     assert has_element?(view, "#workflow-status-done")
+    assert has_element?(view, "#workflow-task-create-todo")
     assert has_element?(view, "#workflow-status-review-tasks")
     assert has_element?(view, "#workflow-task-task_ticket-review")
     assert has_element?(view, "#workflow-task-task_ticket-done")
@@ -105,6 +120,25 @@ defmodule HgsIdeationWeb.WorkflowLiveTest do
 
     assert has_element?(view, "#workflow-statuses")
     assert has_element?(view, "#workflow-task-error")
+  end
+
+  test "creates a task in the initial status lane", %{conn: conn} do
+    Application.put_env(:hgs_ideation, :workflow_loader, fn "support", [] -> sample_graph() end)
+    Application.put_env(:hgs_ideation, :task_repo, TaskRepo)
+
+    {:ok, view, _html} = live(conn, ~p"/workflows/support")
+
+    view
+    |> element("#workflow-task-create-todo")
+    |> render_submit(%{
+      "task" => %{
+        "status_id" => "todo",
+        "title" => "Created from board",
+        "data" => %{}
+      }
+    })
+
+    assert has_element?(view, "#workflow-status-todo-tasks #workflow-task-task_ticket-created")
   end
 
   test "moves a task through an allowed transition", %{conn: conn} do
