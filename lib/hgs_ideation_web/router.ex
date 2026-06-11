@@ -18,6 +18,7 @@ defmodule HgsIdeationWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    live "/workflows/:id", WorkflowLive, :show
   end
 
   # Other scopes may use custom stacks.

@@ -96,7 +96,11 @@ defmodule HgsIdeation.Workflows do
   end
 
   defp loader(opts) do
-    loader = Keyword.get(opts, :loader, &SurrealRepo.load_graph/2)
+    loader =
+      Keyword.get_lazy(opts, :loader, fn ->
+        Application.get_env(:hgs_ideation, :workflow_loader, &SurrealRepo.load_graph/2)
+      end)
+
     repo_opts = Keyword.delete(opts, :loader)
 
     {loader, repo_opts}
