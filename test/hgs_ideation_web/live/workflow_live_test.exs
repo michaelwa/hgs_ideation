@@ -11,23 +11,27 @@ defmodule HgsIdeationWeb.WorkflowLiveTest do
     @moduledoc false
 
     def list_tasks("support", []) do
-      {:ok,
-       [
-         %TaskTicket{
-           id: "task_ticket:review",
-           workflow_id: "workflow:support",
-           status_id: :review,
-           title: "Review demo task",
-           data: %{"reviewer_id" => "user:reviewer"}
-         },
-         %TaskTicket{
-           id: "task_ticket:done",
-           workflow_id: "workflow:support",
-           status_id: :done,
-           title: "Done demo task",
-           data: %{"resolution" => "Fixed"}
-         }
-       ]}
+      {:ok, Agent.get(__MODULE__.Store, & &1)}
+    end
+
+    def get_task(task_id, []) do
+      case Agent.get(__MODULE__.Store, &Enum.find(&1, fn task -> task.id == task_id end)) do
+        nil -> {:error, :task_not_found}
+        task -> {:ok, task}
+      end
+    end
+
+    def update_task_status(%TaskTicket{} = task, to_status_id, data, []) do
+      moved_task = %TaskTicket{task | status_id: to_status_id, data: Map.merge(task.data, data)}
+
+      Agent.update(__MODULE__.Store, fn tasks ->
+        Enum.map(tasks, fn
+          %TaskTicket{id: id} when id == task.id -> moved_task
+          other -> other
+        end)
+      end)
+
+      {:ok, moved_task}
     end
   end
 
@@ -40,6 +44,11 @@ defmodule HgsIdeationWeb.WorkflowLiveTest do
   setup do
     previous_loader = Application.get_env(:hgs_ideation, :workflow_loader)
     previous_task_repo = Application.get_env(:hgs_ideation, :task_repo)
+
+    start_supervised!(%{
+      id: TaskRepo.Store,
+      start: {Agent, :start_link, [fn -> sample_tasks() end, [name: TaskRepo.Store]]}
+    })
 
     on_exit(fn ->
       if previous_loader do
@@ -72,6 +81,7 @@ defmodule HgsIdeationWeb.WorkflowLiveTest do
     assert has_element?(view, "#workflow-status-review-tasks")
     assert has_element?(view, "#workflow-task-task_ticket-review")
     assert has_element?(view, "#workflow-task-task_ticket-done")
+    assert has_element?(view, "#workflow-task-task_ticket-review-move-done-submit")
     assert has_element?(view, "#workflow-transitions")
     assert has_element?(view, "#workflow-transition-review-done")
     assert has_element?(view, "#workflow-mermaid")
@@ -97,18 +107,81 @@ defmodule HgsIdeationWeb.WorkflowLiveTest do
     assert has_element?(view, "#workflow-task-error")
   end
 
+  test "moves a task through an allowed transition", %{conn: conn} do
+    Application.put_env(:hgs_ideation, :workflow_loader, fn "support", [] -> sample_graph() end)
+    Application.put_env(:hgs_ideation, :task_repo, TaskRepo)
+
+    {:ok, view, _html} = live(conn, ~p"/workflows/support")
+
+    view
+    |> element("#workflow-task-task_ticket-review-move-done")
+    |> render_submit(%{
+      "move" => %{
+        "task_id" => "task_ticket:review",
+        "to_status_id" => "done",
+        "data" => %{"approved_by" => "user:approver", "resolution" => "Fixed"}
+      }
+    })
+
+    assert has_element?(view, "#workflow-status-done-tasks #workflow-task-task_ticket-review")
+    refute has_element?(view, "#workflow-status-review-tasks #workflow-task-task_ticket-review")
+  end
+
+  test "keeps a task in place when the move is rejected", %{conn: conn} do
+    Application.put_env(:hgs_ideation, :workflow_loader, fn "support", [] -> sample_graph() end)
+    Application.put_env(:hgs_ideation, :task_repo, TaskRepo)
+
+    {:ok, view, _html} = live(conn, ~p"/workflows/support")
+
+    view
+    |> element("#workflow-task-task_ticket-review-move-done")
+    |> render_submit(%{
+      "move" => %{
+        "task_id" => "task_ticket:review",
+        "to_status_id" => "done",
+        "data" => %{"approved_by" => "user:approver"}
+      }
+    })
+
+    assert has_element?(view, "#workflow-status-review-tasks #workflow-task-task_ticket-review")
+  end
+
   defp sample_graph do
     Graph.new(
-      :support,
+      "support",
       [
-        %Status{id: :todo, label: "Todo", initial?: true},
-        %Status{id: :review, label: "Review", required_fields: [:reviewer_id]},
-        %Status{id: :done, label: "Done", required_fields: [:resolution], terminal?: true}
+        %Status{id: "todo", label: "Todo", initial?: true},
+        %Status{id: "review", label: "Review", required_fields: ["reviewer_id"]},
+        %Status{id: "done", label: "Done", required_fields: ["resolution"], terminal?: true}
       ],
       [
-        %Transition{from: :todo, to: :review, label: "request review"},
-        %Transition{from: :review, to: :done, label: "approve", required_fields: [:approved_by]}
+        %Transition{from: "todo", to: "review", label: "request review"},
+        %Transition{
+          from: "review",
+          to: "done",
+          label: "approve",
+          required_fields: ["approved_by"]
+        }
       ]
     )
+  end
+
+  defp sample_tasks do
+    [
+      %TaskTicket{
+        id: "task_ticket:review",
+        workflow_id: "workflow:support",
+        status_id: "review",
+        title: "Review demo task",
+        data: %{"reviewer_id" => "user:reviewer"}
+      },
+      %TaskTicket{
+        id: "task_ticket:done",
+        workflow_id: "workflow:support",
+        status_id: "done",
+        title: "Done demo task",
+        data: %{"resolution" => "Fixed"}
+      }
+    ]
   end
 end

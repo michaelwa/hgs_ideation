@@ -13,6 +13,7 @@ defmodule HgsIdeationWeb.WorkflowLive do
       |> assign(:statuses, [])
       |> assign(:transitions, [])
       |> assign(:tasks_by_status, %{})
+      |> assign(:move_form, to_form(%{}, as: :move))
       |> assign(:mermaid, nil)
       |> assign(:load_error, nil)
       |> assign(:task_error, nil)
@@ -128,6 +129,39 @@ defmodule HgsIdeationWeb.WorkflowLive do
                           <dd class="mt-0.5 break-words">{task_data_value(value)}</dd>
                         </div>
                       </dl>
+
+                      <div :if={allowed_moves(@transitions, task) != []} class="mt-4 space-y-2">
+                        <p class="text-xs font-semibold uppercase text-base-content/50">Move</p>
+
+                        <.form
+                          :for={transition <- allowed_moves(@transitions, task)}
+                          for={@move_form}
+                          id={"workflow-task-#{dom_id(task.id)}-move-#{dom_id(transition.to)}"}
+                          phx-submit="move_task"
+                          class="space-y-2 rounded border border-base-300 bg-base-100 p-2"
+                        >
+                          <input type="hidden" name="move[task_id]" value={task.id} />
+                          <input type="hidden" name="move[to_status_id]" value={transition.to} />
+
+                          <.input
+                            :for={field <- missing_required_fields(@statuses, transition, task)}
+                            id={"workflow-task-#{dom_id(task.id)}-move-#{dom_id(transition.to)}-#{dom_id(field)}"}
+                            name={"move[data][#{field}]"}
+                            label={field}
+                            value=""
+                            required
+                          />
+
+                          <button
+                            id={"workflow-task-#{dom_id(task.id)}-move-#{dom_id(transition.to)}-submit"}
+                            type="submit"
+                            class="btn btn-sm btn-primary w-full gap-2"
+                          >
+                            <.icon name="hero-arrow-right" class="size-4" />
+                            {move_label(@statuses, transition)}
+                          </button>
+                        </.form>
+                      </div>
                     </article>
                   </div>
                 </div>
@@ -201,10 +235,36 @@ defmodule HgsIdeationWeb.WorkflowLive do
     """
   end
 
+  @impl true
+  def handle_event(
+        "move_task",
+        %{"move" => %{"task_id" => task_id, "to_status_id" => to_status_id} = params},
+        socket
+      ) do
+    data =
+      params
+      |> Map.get("data", %{})
+      |> Map.reject(fn {_key, value} -> value in [nil, ""] end)
+
+    case Tasks.move_task(task_id, to_status_id, data) do
+      {:ok, _task} ->
+        socket =
+          socket
+          |> put_flash(:info, "Task moved")
+          |> load_workflow(socket.assigns.workflow_id)
+
+        {:noreply, socket}
+
+      {:error, error} ->
+        {:noreply, put_flash(socket, :error, "Move rejected: #{inspect(error)}")}
+    end
+  end
+
   defp load_workflow(socket, workflow_id) do
     case Workflows.load_graph(workflow_id) do
       {:ok, graph} ->
         socket
+        |> assign(:load_error, nil)
         |> assign(:graph, graph)
         |> assign(:statuses, Workflows.list_statuses(graph))
         |> assign(:transitions, Workflows.list_transitions(graph))
@@ -219,7 +279,9 @@ defmodule HgsIdeationWeb.WorkflowLive do
   defp load_tasks(socket, workflow_id) do
     case Tasks.list_tasks(workflow_id) do
       {:ok, tasks} ->
-        assign(socket, :tasks_by_status, Enum.group_by(tasks, & &1.status_id))
+        socket
+        |> assign(:task_error, nil)
+        |> assign(:tasks_by_status, Enum.group_by(tasks, & &1.status_id))
 
       {:error, error} ->
         assign(socket, :task_error, error)
@@ -236,6 +298,40 @@ defmodule HgsIdeationWeb.WorkflowLive do
 
   defp task_data_value(value) when is_binary(value), do: value
   defp task_data_value(value), do: inspect(value)
+
+  defp allowed_moves(transitions, task) do
+    Enum.filter(transitions, &(&1.from == task.status_id))
+  end
+
+  defp missing_required_fields(statuses, transition, task) do
+    target_status = Enum.find(statuses, &(&1.id == transition.to))
+    status_fields = if target_status, do: target_status.required_fields, else: []
+
+    (status_fields ++ transition.required_fields)
+    |> Enum.uniq()
+    |> Enum.reject(fn field ->
+      task.data
+      |> get_task_data(field)
+      |> present?()
+    end)
+  end
+
+  defp move_label(statuses, transition) do
+    case Enum.find(statuses, &(&1.id == transition.to)) do
+      nil -> "Move"
+      status -> "Move to #{status.label}"
+    end
+  end
+
+  defp get_task_data(data, field) when is_atom(field) do
+    Map.get(data, field) || Map.get(data, Atom.to_string(field))
+  end
+
+  defp get_task_data(data, field) when is_binary(field) do
+    Map.get(data, field)
+  end
+
+  defp present?(value), do: value not in [nil, ""]
 
   defp task_count(tasks_by_status) do
     tasks_by_status
