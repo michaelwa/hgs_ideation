@@ -1,10 +1,12 @@
 defmodule WorkflowSurrealDemo do
   @moduledoc false
 
+  alias HgsIdeation.Tasks
   alias HgsIdeation.Workflows.{Graph, SurrealRepo}
 
   @workflow_slug "support"
   @workflow_record "workflow:support"
+  @demo_task_record "task_ticket:support_demo"
   @migrations_path Path.expand("../priv/surrealdb_migrations/hgs_ideation", __DIR__)
 
   def run do
@@ -18,9 +20,11 @@ defmodule WorkflowSurrealDemo do
              "workflow_status:support_review",
              "workflow_status:support_done",
              %{"approved_by" => "user:demo", "resolution" => "Demo complete"}
-           ) do
+           ),
+         {:ok, moved_task} <- move_demo_task(client) do
       IO.puts("Workflow graph demo loaded from SurrealDB.")
       IO.inspect(migration_result.statuses, label: "migration statuses")
+      IO.inspect(moved_task, label: "moved task")
       IO.puts("\nMermaid stateDiagram-v2:\n")
       IO.puts(Graph.to_mermaid(graph))
     else
@@ -57,6 +61,8 @@ defmodule WorkflowSurrealDemo do
 
   defp seed_query do
     """
+    DELETE task_status_history WHERE task = #{@demo_task_record};
+    DELETE #{@demo_task_record};
     DELETE can_transition_to WHERE workflow = #{@workflow_record};
     DELETE workflow_status WHERE workflow = #{@workflow_record};
     DELETE #{@workflow_record};
@@ -152,9 +158,29 @@ defmodule WorkflowSurrealDemo do
         created_at: time::now(),
         updated_at: time::now()
       };
+
+    CREATE #{@demo_task_record} CONTENT {
+      workflow: #{@workflow_record},
+      status: workflow_status:support_review,
+      title: 'Demo approval task',
+      data: {
+        reviewer_id: 'user:reviewer'
+      },
+      created_at: time::now(),
+      updated_at: time::now()
+    };
     """
   end
 
+  defp move_demo_task(client) do
+    Tasks.move_task(
+      @demo_task_record,
+      "workflow_status:support_done",
+      %{"approved_by" => "user:demo", "resolution" => "Demo complete"},
+      connect_fun: fn -> {:ok, client} end,
+      workflow_loader: fn _workflow_slug, _opts -> SurrealRepo.load_graph(client, @workflow_slug, []) end
+    )
+  end
 end
 
 WorkflowSurrealDemo.run()
