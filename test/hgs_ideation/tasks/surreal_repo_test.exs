@@ -26,6 +26,29 @@ defmodule HgsIdeation.Tasks.SurrealRepoTest do
     end
   end
 
+  describe "list_status_history/2" do
+    test "loads status history scoped to a workflow record" do
+      assert {:ok, [history]} =
+               SurrealRepo.list_status_history(
+                 "support",
+                 connect_fun: fn -> {:ok, :client} end,
+                 query_fun: fn :client, query, variables ->
+                   assert query == SurrealRepo.list_status_history_query("workflow:support")
+                   assert variables == %{}
+
+                   {:ok, %QueryResult{results: [[history_row()]]}}
+                 end
+               )
+
+      assert history.id == "task_status_history:one"
+      assert history.task_id == "task_ticket:demo"
+      assert history.workflow_id == "workflow:support"
+      assert history.from_status_id == "workflow_status:support_review"
+      assert history.to_status_id == "workflow_status:support_done"
+      assert history.data == %{"approved_by" => "user:demo"}
+    end
+  end
+
   describe "create_task/3" do
     test "creates a task with workflow and status record ids" do
       assert {:ok, %TaskTicket{} = task} =
@@ -138,6 +161,21 @@ defmodule HgsIdeation.Tasks.SurrealRepoTest do
         "data" => %{"reviewer_id" => "user:reviewer"},
         "created_at" => "2026-06-11T00:00:00Z",
         "updated_at" => "2026-06-11T00:00:00Z"
+      },
+      overrides
+    )
+  end
+
+  defp history_row(overrides \\ %{}) do
+    Map.merge(
+      %{
+        "id" => "task_status_history:one",
+        "task" => "task_ticket:demo",
+        "workflow" => "workflow:support",
+        "from_status" => "workflow_status:support_review",
+        "to_status" => "workflow_status:support_done",
+        "data" => %{"approved_by" => "user:demo"},
+        "created_at" => "2026-06-11T00:00:00Z"
       },
       overrides
     )

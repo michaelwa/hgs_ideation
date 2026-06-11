@@ -4,6 +4,7 @@ defmodule HgsIdeationWeb.WorkflowLiveTest do
   import Phoenix.LiveViewTest
 
   alias HgsIdeation.Tasks.TaskTicket
+  alias HgsIdeation.Tasks.TaskStatusHistory
   alias HgsIdeation.Workflows.Graph
   alias HgsIdeation.Workflows.{Status, Transition}
 
@@ -12,6 +13,21 @@ defmodule HgsIdeationWeb.WorkflowLiveTest do
 
     def list_tasks("support", []) do
       {:ok, Agent.get(__MODULE__.Store, & &1)}
+    end
+
+    def list_status_history("support", []) do
+      {:ok,
+       [
+         %TaskStatusHistory{
+           id: "task_status_history:done",
+           task_id: "task_ticket:done",
+           workflow_id: "workflow:support",
+           from_status_id: "review",
+           to_status_id: "done",
+           data: %{"approved_by" => "user:approver"},
+           created_at: "2026-06-11T00:00:00Z"
+         }
+       ]}
     end
 
     def create_task("support", attrs, []) do
@@ -53,6 +69,7 @@ defmodule HgsIdeationWeb.WorkflowLiveTest do
     @moduledoc false
 
     def list_tasks("support", []), do: {:error, :task_store_unavailable}
+    def list_status_history("support", []), do: {:ok, []}
   end
 
   setup do
@@ -96,6 +113,8 @@ defmodule HgsIdeationWeb.WorkflowLiveTest do
     assert has_element?(view, "#workflow-status-review-tasks")
     assert has_element?(view, "#workflow-task-task_ticket-review")
     assert has_element?(view, "#workflow-task-task_ticket-done")
+    assert has_element?(view, "#workflow-task-task_ticket-done-history")
+    assert has_element?(view, "#workflow-history-task_status_history-done")
     assert has_element?(view, "#workflow-task-task_ticket-review-move-done-submit")
     assert has_element?(view, "#workflow-transitions")
     assert has_element?(view, "#workflow-transition-review-done")

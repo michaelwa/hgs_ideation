@@ -21,6 +21,18 @@ defmodule HgsIdeation.Tasks do
   end
 
   @doc """
+  Lists task status history for a workflow.
+  """
+  @spec list_status_history(workflow_id(), keyword()) ::
+          {:ok, [HgsIdeation.Tasks.TaskStatusHistory.t()]} | {:error, term()}
+  def list_status_history(workflow_id, opts \\ [])
+      when is_binary(workflow_id) and is_list(opts) do
+    repository = repo(opts)
+
+    repository.list_status_history(workflow_id, repo_opts(opts))
+  end
+
+  @doc """
   Creates a task ticket in a workflow status.
   """
   @spec create_task(workflow_id(), map(), keyword()) :: {:ok, TaskTicket.t()} | {:error, term()}

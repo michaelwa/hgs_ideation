@@ -13,6 +13,7 @@ defmodule HgsIdeationWeb.WorkflowLive do
       |> assign(:statuses, [])
       |> assign(:transitions, [])
       |> assign(:tasks_by_status, %{})
+      |> assign(:history_by_task, %{})
       |> assign(:move_form, to_form(%{}, as: :move))
       |> assign(:create_form, to_form(%{}, as: :task))
       |> assign(:mermaid, nil)
@@ -42,7 +43,7 @@ defmodule HgsIdeationWeb.WorkflowLive do
             <span class="rounded border border-base-300 px-3 py-1 text-xs font-medium text-base-content/70">
               {length(@statuses)} statuses / {length(@transitions)} transitions / {task_count(
                 @tasks_by_status
-              )} tasks
+              )} tasks / {history_count(@history_by_task)} history
             </span>
           </div>
         </div>
@@ -165,6 +166,43 @@ defmodule HgsIdeationWeb.WorkflowLive do
                           <dd class="mt-0.5 break-words">{task_data_value(value)}</dd>
                         </div>
                       </dl>
+
+                      <div
+                        :if={history_for_task(@history_by_task, task.id) != []}
+                        id={"workflow-task-#{dom_id(task.id)}-history"}
+                        class="mt-4 space-y-2"
+                      >
+                        <p class="text-xs font-semibold uppercase text-base-content/50">History</p>
+
+                        <ol class="space-y-2">
+                          <li
+                            :for={entry <- history_for_task(@history_by_task, task.id)}
+                            id={"workflow-history-#{dom_id(entry.id)}"}
+                            class="rounded border border-base-300 bg-base-100 p-2 text-xs"
+                          >
+                            <div class="flex flex-wrap items-center gap-1">
+                              <span class="font-mono text-base-content/60">
+                                {short_status(entry.from_status_id)}
+                              </span>
+                              <.icon name="hero-arrow-right" class="size-3 text-base-content/50" />
+                              <span class="font-mono text-base-content/80">
+                                {short_status(entry.to_status_id)}
+                              </span>
+                            </div>
+
+                            <p :if={entry.created_at} class="mt-1 text-base-content/50">
+                              {entry.created_at}
+                            </p>
+
+                            <dl :if={entry.data != %{}} class="mt-2 grid gap-1">
+                              <div :for={{key, value} <- history_data_pairs(entry)}>
+                                <dt class="font-mono text-base-content/50">{key}</dt>
+                                <dd class="break-words">{task_data_value(value)}</dd>
+                              </div>
+                            </dl>
+                          </li>
+                        </ol>
+                      </div>
 
                       <div :if={allowed_moves(@transitions, task) != []} class="mt-4 space-y-2">
                         <p class="text-xs font-semibold uppercase text-base-content/50">Move</p>
@@ -347,9 +385,22 @@ defmodule HgsIdeationWeb.WorkflowLive do
         socket
         |> assign(:task_error, nil)
         |> assign(:tasks_by_status, Enum.group_by(tasks, & &1.status_id))
+        |> load_history(workflow_id)
 
       {:error, error} ->
         assign(socket, :task_error, error)
+    end
+  end
+
+  defp load_history(socket, workflow_id) do
+    case Tasks.list_status_history(workflow_id) do
+      {:ok, history} ->
+        assign(socket, :history_by_task, Enum.group_by(history, & &1.task_id))
+
+      {:error, error} ->
+        socket
+        |> assign(:history_by_task, %{})
+        |> assign(:task_error, error)
     end
   end
 
@@ -357,8 +408,16 @@ defmodule HgsIdeationWeb.WorkflowLive do
     Map.get(tasks_by_status, status_id, [])
   end
 
+  defp history_for_task(history_by_task, task_id) do
+    Map.get(history_by_task, task_id, [])
+  end
+
   defp task_data_pairs(task) do
     Enum.sort_by(task.data, fn {key, _value} -> to_string(key) end)
+  end
+
+  defp history_data_pairs(entry) do
+    Enum.sort_by(entry.data, fn {key, _value} -> to_string(key) end)
   end
 
   defp task_data_value(value) when is_binary(value), do: value
@@ -403,6 +462,21 @@ defmodule HgsIdeationWeb.WorkflowLive do
     |> Map.values()
     |> Enum.map(&length/1)
     |> Enum.sum()
+  end
+
+  defp history_count(history_by_task) do
+    history_by_task
+    |> Map.values()
+    |> Enum.map(&length/1)
+    |> Enum.sum()
+  end
+
+  defp short_status(nil), do: "start"
+
+  defp short_status(status_id) do
+    status_id
+    |> to_string()
+    |> String.replace_prefix("workflow_status:", "")
   end
 
   defp dom_id(value) do

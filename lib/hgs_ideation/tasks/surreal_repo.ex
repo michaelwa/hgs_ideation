@@ -3,12 +3,40 @@ defmodule HgsIdeation.Tasks.SurrealRepo do
   Persists task tickets in SurrealDB.
   """
 
-  alias HgsIdeation.Tasks.TaskTicket
+  alias HgsIdeation.Tasks.{TaskStatusHistory, TaskTicket}
   alias HgsIdeation.Workflows.SurrealRepo, as: WorkflowRepo
   alias SurrealDB.QueryResult
 
   @type task_id :: TaskTicket.id()
   @type workflow_id :: WorkflowRepo.workflow_id()
+
+  @doc """
+  Connects with the configured SurrealDB client and lists workflow status history.
+  """
+  @spec list_status_history(workflow_id(), keyword()) ::
+          {:ok, [TaskStatusHistory.t()]} | {:error, term()}
+  def list_status_history(workflow_id, opts \\ [])
+      when is_binary(workflow_id) and is_list(opts) do
+    with {:ok, client} <- connect(opts) do
+      list_status_history(client, workflow_id, opts)
+    end
+  end
+
+  @doc """
+  Lists workflow status history with an existing SurrealDB client.
+  """
+  @spec list_status_history(term(), workflow_id(), keyword()) ::
+          {:ok, [TaskStatusHistory.t()]} | {:error, term()}
+  def list_status_history(client, workflow_id, opts)
+      when is_binary(workflow_id) and is_list(opts) do
+    query_fun = Keyword.get(opts, :query_fun, &SurrealDB.query/3)
+
+    with {:ok, workflow_record_id} <- WorkflowRepo.workflow_record_id(workflow_id),
+         {:ok, %QueryResult{results: [rows | _]}} <-
+           query_fun.(client, list_status_history_query(workflow_record_id), %{}) do
+      {:ok, Enum.map(rows || [], &to_status_history/1)}
+    end
+  end
 
   @doc """
   Connects with the configured SurrealDB client and lists workflow tasks.
@@ -146,6 +174,16 @@ defmodule HgsIdeation.Tasks.SurrealRepo do
   end
 
   @doc false
+  def list_status_history_query(workflow_record_id) do
+    """
+    SELECT id, task, workflow, from_status, to_status, data, created_at
+    FROM task_status_history
+    WHERE workflow = #{workflow_record_id}
+    ORDER BY created_at DESC, id DESC;
+    """
+  end
+
+  @doc false
   def create_task_query(workflow_record_id, status_record_id) do
     """
     CREATE task_ticket CONTENT {
@@ -210,6 +248,18 @@ defmodule HgsIdeation.Tasks.SurrealRepo do
     }
   end
 
+  defp to_status_history(row) when is_map(row) do
+    %TaskStatusHistory{
+      id: record_id(row["id"]),
+      task_id: record_id(row["task"]),
+      workflow_id: record_id(row["workflow"]),
+      from_status_id: optional_record_id(row["from_status"]),
+      to_status_id: record_id(row["to_status"]),
+      data: row["data"] || %{},
+      created_at: to_optional_string(row["created_at"])
+    }
+  end
+
   defp one_task([row | _]), do: {:ok, to_task(row)}
   defp one_task([]), do: {:error, :task_not_found}
   defp one_task(nil), do: {:error, :task_not_found}
@@ -239,6 +289,9 @@ defmodule HgsIdeation.Tasks.SurrealRepo do
   defp record_id(%{"id" => id}), do: record_id(id)
   defp record_id(%{id: id}), do: record_id(id)
   defp record_id(id), do: to_string(id)
+
+  defp optional_record_id(nil), do: nil
+  defp optional_record_id(id), do: record_id(id)
 
   defp to_optional_string(nil), do: nil
   defp to_optional_string(value), do: to_string(value)
