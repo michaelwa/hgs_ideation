@@ -31,7 +31,7 @@ defmodule HgsIdeationWeb.WorkflowLive do
       <section id="workflow-visualization" class="space-y-6">
         <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60">
+            <p class="text-xs font-semibold uppercase text-base-content/60">
               Workflow
             </p>
             <h1 class="text-2xl font-semibold text-base-content">Kanban FSM</h1>
@@ -51,7 +51,7 @@ defmodule HgsIdeationWeb.WorkflowLive do
           id="workflow-load-error"
           class="rounded border border-error/40 bg-error/10 p-4 text-sm text-error"
         >
-          Could not load workflow: {inspect(@load_error)}
+          {friendly_error(@load_error, :load)}
         </div>
 
         <div :if={!@load_error} class="space-y-10">
@@ -61,7 +61,7 @@ defmodule HgsIdeationWeb.WorkflowLive do
               id="workflow-task-error"
               class="rounded border border-warning/40 bg-warning/10 p-4 text-sm text-warning"
             >
-              Could not load task tickets: {inspect(@task_error)}
+              {friendly_error(@task_error, :tasks)}
             </div>
 
             <div class="flex items-start gap-4 overflow-x-auto pb-4">
@@ -145,7 +145,7 @@ defmodule HgsIdeationWeb.WorkflowLive do
                         :for={field <- status.required_fields}
                         id={"workflow-task-create-#{dom_id(status.id)}-#{dom_id(field)}"}
                         name={"task[data][#{field}]"}
-                        label={field}
+                        label={field_label(field)}
                         value=""
                         required
                       />
@@ -243,7 +243,7 @@ defmodule HgsIdeationWeb.WorkflowLive do
                           :for={field <- missing_required_fields(@statuses, transition, task)}
                           id={"workflow-task-#{dom_id(task.id)}-move-#{dom_id(transition.to)}-#{dom_id(field)}"}
                           name={"move[data][#{field}]"}
-                          label={field}
+                          label={field_label(field)}
                           value=""
                           required
                         />
@@ -333,7 +333,7 @@ defmodule HgsIdeationWeb.WorkflowLive do
         {:noreply, socket}
 
       {:error, error} ->
-        {:noreply, put_flash(socket, :error, "Create rejected: #{inspect(error)}")}
+        {:noreply, put_flash(socket, :error, friendly_error(error, :create))}
     end
   end
 
@@ -358,7 +358,7 @@ defmodule HgsIdeationWeb.WorkflowLive do
         {:noreply, socket}
 
       {:error, error} ->
-        {:noreply, put_flash(socket, :error, "Move rejected: #{inspect(error)}")}
+        {:noreply, put_flash(socket, :error, friendly_error(error, :move))}
     end
   end
 
@@ -478,6 +478,38 @@ defmodule HgsIdeationWeb.WorkflowLive do
       status -> "Move to #{status.label}"
     end
   end
+
+  defp field_label(field) do
+    field
+    |> to_string()
+    |> String.replace("_", " ")
+    |> String.capitalize()
+    |> String.replace_suffix(" id", " ID")
+  end
+
+  defp friendly_error({:missing_required_fields, fields}, _context) do
+    "Missing required fields: #{Enum.map_join(fields, ", ", &field_label/1)}"
+  end
+
+  defp friendly_error({:transition_not_allowed, from, to}, _context) do
+    "Cannot move from #{short_status(from)} to #{short_status(to)}"
+  end
+
+  defp friendly_error({:unknown_status, status_id}, _context) do
+    "Unknown status: #{short_status(status_id)}"
+  end
+
+  defp friendly_error({:missing_required_attr, attr}, :create) do
+    "Missing required task field: #{field_label(attr)}"
+  end
+
+  defp friendly_error(:task_not_found, _context), do: "Task could not be found"
+  defp friendly_error(:task_store_unavailable, _context), do: "Task storage is unavailable"
+
+  defp friendly_error(_error, :load), do: "Could not load workflow"
+  defp friendly_error(_error, :tasks), do: "Could not load task tickets"
+  defp friendly_error(_error, :create), do: "Could not create task"
+  defp friendly_error(_error, :move), do: "Could not move task"
 
   defp get_task_data(data, field) when is_atom(field) do
     Map.get(data, field) || Map.get(data, Atom.to_string(field))

@@ -186,16 +186,18 @@ defmodule HgsIdeationWeb.WorkflowLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/workflows/support")
 
-    view
-    |> element("#workflow-task-task_ticket-review-move-done")
-    |> render_submit(%{
-      "move" => %{
-        "task_id" => "task_ticket:review",
-        "to_status_id" => "done",
-        "data" => %{"approved_by" => "user:approver"}
-      }
-    })
+    html =
+      view
+      |> element("#workflow-task-task_ticket-review-move-done")
+      |> render_submit(%{
+        "move" => %{
+          "task_id" => "task_ticket:review",
+          "to_status_id" => "done",
+          "data" => %{"approved_by" => "user:approver"}
+        }
+      })
 
+    assert html =~ "Missing required fields: Resolution"
     assert has_element?(view, "#workflow-status-review-tasks #workflow-task-task_ticket-review")
   end
 
