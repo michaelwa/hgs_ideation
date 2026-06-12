@@ -264,7 +264,66 @@ defmodule HgsIdeationWeb.WorkflowLive do
             </div>
           </section>
 
-          <div class="grid gap-8 2xl:grid-cols-2">
+          <div class="grid gap-8 2xl:grid-cols-3">
+            <section id="workflow-diagram" class="space-y-3">
+              <div class="flex items-center gap-2">
+                <.icon name="hero-chart-bar-square" class="size-5 text-base-content/60" />
+                <h2 class="text-lg font-semibold">FSM Preview</h2>
+              </div>
+
+              <div class="rounded border border-base-300 bg-base-100 p-4">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="rounded border border-dashed border-base-300 px-2 py-1 text-xs font-medium text-base-content/60">
+                    start
+                  </span>
+
+                  <%= for status <- @statuses do %>
+                    <.icon name="hero-arrow-right" class="size-4 text-base-content/40" />
+                    <div
+                      id={"workflow-diagram-status-#{dom_id(status.id)}"}
+                      class={[
+                        "rounded border px-3 py-2 text-sm shadow-sm",
+                        if(status.initial?,
+                          do: "border-success/40 bg-success/10",
+                          else: "border-base-300 bg-base-200/70"
+                        ),
+                        status.terminal? && "border-info/40 bg-info/10"
+                      ]}
+                    >
+                      <div class="font-medium">{status.label}</div>
+                      <div class="mt-0.5 font-mono text-[11px] text-base-content/50">
+                        {short_status(status.id)}
+                      </div>
+                    </div>
+                  <% end %>
+
+                  <.icon name="hero-arrow-right" class="size-4 text-base-content/40" />
+                  <span class="rounded border border-dashed border-base-300 px-2 py-1 text-xs font-medium text-base-content/60">
+                    end
+                  </span>
+                </div>
+
+                <div class="mt-4 space-y-2">
+                  <div
+                    :for={transition <- @transitions}
+                    id={"workflow-diagram-transition-#{dom_id(transition.from)}-#{dom_id(transition.to)}"}
+                    class="flex flex-wrap items-center gap-2 rounded bg-base-200/70 px-3 py-2 text-xs"
+                  >
+                    <span class="font-mono text-base-content/70">
+                      {short_status(transition.from)}
+                    </span>
+                    <.icon name="hero-arrow-right" class="size-3 text-base-content/50" />
+                    <span class="font-mono text-base-content/80">
+                      {short_status(transition.to)}
+                    </span>
+                    <span class="ml-auto rounded bg-base-100 px-2 py-0.5 text-base-content/60">
+                      {transition_label(transition)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             <section id="workflow-transitions" class="space-y-3">
               <div class="flex items-center gap-2">
                 <.icon name="hero-arrows-right-left" class="size-5 text-base-content/60" />
@@ -478,6 +537,8 @@ defmodule HgsIdeationWeb.WorkflowLive do
       status -> "Move to #{status.label}"
     end
   end
+
+  defp transition_label(transition), do: transition.label || "allowed"
 
   defp field_label(field) do
     field
